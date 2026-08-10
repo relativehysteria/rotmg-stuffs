@@ -1,0 +1,9 @@
+[package]
+name = "sniff"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+colored = "3.1.1"
+pcap = "2.4.0"
+pnet_packet = "0.35.0"
