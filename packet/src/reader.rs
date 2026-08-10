@@ -5,6 +5,14 @@
 
 use std::fmt;
 
+/// Decodes a value from the packet wire format.
+///
+/// Implementations consume bytes from the [`PacketReadaer`] and reconstruct
+/// a value from them.
+pub trait PacketDecode: Sized {
+    fn decode(reader: &mut PacketReader) -> Result<Self, DecodeError>;
+}
+
 /// An error encountered while decoding a packet.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DecodeError {
@@ -110,34 +118,56 @@ impl<'a> PacketReader<'a> {
     }
 }
 
+impl PacketDecode for String {
+    fn decode(reader: &mut PacketReader) -> Result<Self, DecodeError> {
+        reader.read_string()
+    }
+}
+
+impl PacketDecode for Vec<u8> {
+    fn decode(reader: &mut PacketReader) -> Result<Self, DecodeError> {
+        reader.read_byte_array().map(|arr| arr.to_vec())
+    }
+}
+
 macro_rules! impl_read_int {
     ($($ty:ty => $name:ident),* $(,)?) => {
-        $(
-            #[doc = concat!(
-                "Reads and returns `", stringify!($ty), "` from the packet."
-            )]
-            pub fn $name(&mut self) -> Result<$ty, DecodeError> {
-                let bytes = self.take(std::mem::size_of::<$ty>())?;
+        impl<'a> PacketReader<'a> {
+            $(
+                #[doc = concat!(
+                    "Reads and returns `", stringify!($ty), "` from the packet."
+                )]
+                pub fn $name(&mut self) -> Result<$ty, DecodeError> {
+                    let bytes = self.take(std::mem::size_of::<$ty>())?;
 
-                Ok(<$ty>::from_be_bytes(
-                    bytes.try_into().unwrap()
-                ))
+                    Ok(<$ty>::from_be_bytes(
+                        bytes.try_into().unwrap()
+                    ))
+                }
+            )*
+        }
+
+        $(
+            impl PacketDecode for $ty {
+                fn decode(reader: &mut PacketReader)
+                    -> Result<Self, DecodeError>
+                {
+                    reader.$name()
+                }
             }
         )*
     };
 }
 
-impl<'a> PacketReader<'a> {
-    impl_read_int! {
-        u8   => read_u8,
-        u16  => read_u16,
-        u32  => read_u32,
-        u64  => read_u64,
-        u128 => read_u128,
-        i8   => read_i8,
-        i16  => read_i16,
-        i32  => read_i32,
-        i64  => read_i64,
-        i128 => read_i128,
-    }
+impl_read_int! {
+    u8   => read_u8,
+    u16  => read_u16,
+    u32  => read_u32,
+    u64  => read_u64,
+    u128 => read_u128,
+    i8   => read_i8,
+    i16  => read_i16,
+    i32  => read_i32,
+    i64  => read_i64,
+    i128 => read_i128,
 }

@@ -11,7 +11,7 @@ use pnet_packet::{
     Packet,
 };
 
-use sniff::packet::{PacketType, PacketReader, Hello};
+use packet::{PacketType, PacketReader, Hello, PacketDecode};
 use sniff::Rc4;
 
 // NOTE: This is just a quick setup for sniffing stuff. I will eventually clean
@@ -91,7 +91,7 @@ fn main() {
 
     let mut waiting_for_hello = true;
 
-    println!("Waiting for initial Hello packet...");
+    println!("Waiting for initial Hello packet to start decrypting...");
 
     // Start capturing!
     while let Ok(packet) = cap.next_packet() {

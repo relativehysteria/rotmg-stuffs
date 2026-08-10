@@ -5,6 +5,11 @@
 
 use std::fmt;
 
+/// Encodes a value into the packet wire format.
+pub trait PacketEncode {
+    fn encode(&self, writer: &mut PacketWriter) -> Result<(), EncodeError>;
+}
+
 /// An error encountered while encoding a packet.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EncodeError {
@@ -87,30 +92,65 @@ impl PacketWriter {
     }
 }
 
+impl PacketEncode for &str {
+    fn encode(&self, writer: &mut PacketWriter) -> Result<(), EncodeError> {
+        writer.write_string(self)
+    }
+}
+
+impl PacketEncode for String {
+    fn encode(&self, writer: &mut PacketWriter) -> Result<(), EncodeError> {
+        writer.write_string(self)
+    }
+}
+
+impl PacketEncode for &[u8] {
+    fn encode(&self, writer: &mut PacketWriter) -> Result<(), EncodeError> {
+        writer.write_byte_array(self)
+    }
+}
+
+impl PacketEncode for Vec<u8> {
+    fn encode(&self, writer: &mut PacketWriter) -> Result<(), EncodeError> {
+        writer.write_byte_array(self)
+    }
+}
+
 macro_rules! impl_write_int {
     ($($ty:ty => $name:ident),* $(,)?) => {
+        impl PacketWriter {
+            $(
+                #[doc = concat!(
+                    "Writes `", stringify!($ty), "` into the payload."
+                )]
+                pub fn $name(&mut self, value: $ty) {
+                    self.data.extend_from_slice(&value.to_be_bytes());
+                }
+            )*
+        }
+
         $(
-            #[doc = concat!(
-                "Writes `", stringify!($ty), "` into the payload."
-            )]
-            pub fn $name(&mut self, value: $ty) {
-                self.data.extend_from_slice(&value.to_be_bytes());
+            impl PacketEncode for $ty {
+                fn encode(&self, writer: &mut PacketWriter)
+                    -> Result<(), EncodeError>
+                {
+                    // Primitive integer types never fail.
+                    Ok(writer.$name(*self))
+                }
             }
         )*
     };
 }
 
-impl PacketWriter {
-    impl_write_int! {
-        u8   => write_u8,
-        u16  => write_u16,
-        u32  => write_u32,
-        u64  => write_u64,
-        u128 => write_u128,
-        i8   => write_i8,
-        i16  => write_i16,
-        i32  => write_i32,
-        i64  => write_i64,
-        i128 => write_i128,
-    }
+impl_write_int! {
+    u8   => write_u8,
+    u16  => write_u16,
+    u32  => write_u32,
+    u64  => write_u64,
+    u128 => write_u128,
+    i8   => write_i8,
+    i16  => write_i16,
+    i32  => write_i32,
+    i64  => write_i64,
+    i128 => write_i128,
 }

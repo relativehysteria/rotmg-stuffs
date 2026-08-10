@@ -3,12 +3,44 @@
 pub mod reader;
 pub mod writer;
 
-pub use writer::{PacketWriter, EncodeError};
-pub use reader::{PacketReader, DecodeError};
+pub use writer::{PacketWriter, PacketEncode, EncodeError};
+pub use reader::{PacketReader, PacketDecode, DecodeError};
+
+// Required to make the `Packet` derive macro work.
+extern crate self as packet;
+
+// Export the Packet derive macro here. These are allowed to have the same name
+// because they're different namespaces; the `Packet` trait (implemented below)
+// lives in the _type namespace_ whereas the derive macro lives in the
+// _macro namespace_.
+pub use packet_derive::Packet;
+
+/// A complete packet that can be encoded to and decoded from the packet wire
+/// format.
+///
+/// This trait is automatically implemented for every type that implements
+/// [`PacketEncode`] and [`PacketDecode`].
+///
+/// Packet fields are encoded and decoded in their declaration order when using
+/// the [`Packet`](derive@Packet) derive macro.
+///
+/// # Examples
+///
+/// ```ignore
+/// #[derive(Packet)]
+/// struct Hello {
+///     game_id: i32,
+///     build_version: String,
+/// }
+/// ```
+pub trait Packet: PacketEncode + PacketDecode {}
+
+// Auto impl for all types.
+impl<T: PacketEncode + PacketDecode> Packet for T {}
 
 /// NOTE: Put here for now; testing whether decryption works! I'll put it into a
 /// better place later.
-#[derive(Debug)]
+#[derive(Debug, Packet)]
 pub struct Hello {
     pub game_id: i32,
     pub build_version: String,
@@ -20,36 +52,6 @@ pub struct Hello {
     pub platform_token: String,
     pub client_token: String,
     pub user_token: String,
-}
-
-impl Hello {
-    pub fn decode(reader: &mut crate::packet::PacketReader)
-        -> Result<Self, crate::packet::DecodeError>
-    {
-        let game_id = reader.read_i32()?;
-        let build_version = reader.read_string()?;
-        let access_token = reader.read_string()?;
-        let key_time = reader.read_u32()?;
-        let key = reader.read_byte_array()?.to_vec();
-        let user_platform = reader.read_string()?;
-        let play_platform = reader.read_string()?;
-        let platform_token = reader.read_string()?;
-        let client_token = reader.read_string()?;
-        let user_token = reader.read_string()?;
-
-        Ok(Self {
-            game_id,
-            build_version,
-            access_token,
-            key_time,
-            key,
-            user_platform,
-            play_platform,
-            platform_token,
-            client_token,
-            user_token,
-        })
-    }
 }
 
 macro_rules! packet_types {

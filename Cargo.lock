@@ -104,6 +104,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "43794a0ace135be66a25d3ae77d41b91615fb68ae937f904090203e81f755b65"
 
 [[package]]
+name = "packet"
+version = "0.1.0"
+dependencies = [
+ "packet_derive",
+]
+
+[[package]]
+name = "packet_derive"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "pcap"
 version = "2.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -224,6 +240,8 @@ name = "sniff"
 version = "0.1.0"
 dependencies = [
  "colored",
+ "packet",
+ "packet_derive",
  "pcap",
  "pnet_packet",
 ]
