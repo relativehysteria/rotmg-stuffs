@@ -7,7 +7,8 @@ use std::fmt;
 
 /// Encodes a value into the packet wire format.
 pub trait PacketEncode {
-    fn encode(&self, writer: &mut PacketWriter) -> Result<(), EncodeError>;
+    fn encode_packet(&self, writer: &mut PacketWriter)
+        -> Result<(), EncodeError>;
 }
 
 /// An error encountered while encoding a packet.
@@ -93,25 +94,33 @@ impl PacketWriter {
 }
 
 impl PacketEncode for &str {
-    fn encode(&self, writer: &mut PacketWriter) -> Result<(), EncodeError> {
+    fn encode_packet(&self, writer: &mut PacketWriter)
+        -> Result<(), EncodeError>
+    {
         writer.write_string(self)
     }
 }
 
 impl PacketEncode for String {
-    fn encode(&self, writer: &mut PacketWriter) -> Result<(), EncodeError> {
+    fn encode_packet(&self, writer: &mut PacketWriter)
+        -> Result<(), EncodeError>
+    {
         writer.write_string(self)
     }
 }
 
 impl PacketEncode for &[u8] {
-    fn encode(&self, writer: &mut PacketWriter) -> Result<(), EncodeError> {
+    fn encode_packet(&self, writer: &mut PacketWriter)
+        -> Result<(), EncodeError>
+    {
         writer.write_byte_array(self)
     }
 }
 
 impl PacketEncode for Vec<u8> {
-    fn encode(&self, writer: &mut PacketWriter) -> Result<(), EncodeError> {
+    fn encode_packet(&self, writer: &mut PacketWriter)
+        -> Result<(), EncodeError>
+    {
         writer.write_byte_array(self)
     }
 }
@@ -131,7 +140,7 @@ macro_rules! impl_write_int {
 
         $(
             impl PacketEncode for $ty {
-                fn encode(&self, writer: &mut PacketWriter)
+                fn encode_packet(&self, writer: &mut PacketWriter)
                     -> Result<(), EncodeError>
                 {
                     // Primitive integer types never fail.

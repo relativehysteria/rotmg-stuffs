@@ -10,7 +10,7 @@ use std::fmt;
 /// Implementations consume bytes from the [`PacketReadaer`] and reconstruct
 /// a value from them.
 pub trait PacketDecode: Sized {
-    fn decode(reader: &mut PacketReader) -> Result<Self, DecodeError>;
+    fn decode_packet(reader: &mut PacketReader) -> Result<Self, DecodeError>;
 }
 
 /// An error encountered while decoding a packet.
@@ -119,13 +119,13 @@ impl<'a> PacketReader<'a> {
 }
 
 impl PacketDecode for String {
-    fn decode(reader: &mut PacketReader) -> Result<Self, DecodeError> {
+    fn decode_packet(reader: &mut PacketReader) -> Result<Self, DecodeError> {
         reader.read_string()
     }
 }
 
 impl PacketDecode for Vec<u8> {
-    fn decode(reader: &mut PacketReader) -> Result<Self, DecodeError> {
+    fn decode_packet(reader: &mut PacketReader) -> Result<Self, DecodeError> {
         reader.read_byte_array().map(|arr| arr.to_vec())
     }
 }
@@ -149,7 +149,7 @@ macro_rules! impl_read_int {
 
         $(
             impl PacketDecode for $ty {
-                fn decode(reader: &mut PacketReader)
+                fn decode_packet(reader: &mut PacketReader)
                     -> Result<Self, DecodeError>
                 {
                     reader.$name()

@@ -6,9 +6,6 @@ pub mod writer;
 pub use writer::{PacketWriter, PacketEncode, EncodeError};
 pub use reader::{PacketReader, PacketDecode, DecodeError};
 
-// Required to make the `Packet` derive macro work.
-extern crate self as packet;
-
 // Export the Packet derive macro here. These are allowed to have the same name
 // because they're different namespaces; the `Packet` trait (implemented below)
 // lives in the _type namespace_ whereas the derive macro lives in the
@@ -33,7 +30,18 @@ pub use packet_derive::Packet;
 ///     build_version: String,
 /// }
 /// ```
-pub trait Packet: PacketEncode + PacketDecode {}
+pub trait Packet: PacketEncode + PacketDecode {
+    fn decode(reader: &mut PacketReader) -> Result<Self, DecodeError>
+    where
+        Self: Sized,
+    {
+        PacketDecode::decode_packet(reader)
+    }
+
+    fn encode(&self, writer: &mut PacketWriter) -> Result<(), EncodeError> {
+        PacketEncode::encode_packet(self, writer)
+    }
+}
 
 // Auto impl for all types.
 impl<T: PacketEncode + PacketDecode> Packet for T {}

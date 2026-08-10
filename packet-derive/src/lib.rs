@@ -1,10 +1,25 @@
 use proc_macro::TokenStream;
+use proc_macro_crate::{crate_name, FoundCrate};
 use quote::quote;
 use syn::{parse_macro_input, Data, DeriveInput, Fields};
 
 #[proc_macro_derive(Packet)]
 pub fn derive_packet(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
+
+    let packet_crate = match crate_name("packet") {
+        Ok(FoundCrate::Itself) => quote!(crate),
+        Ok(FoundCrate::Name(name)) => {
+            let ident = syn::Ident::new(&name, proc_macro2::Span::call_site());
+            quote!(::#ident)
+        },
+        Err(_) => {
+            return syn::Error::new_spanned(
+                    &input, "could not find the `packet` crate")
+                .to_compile_error()
+                .into();
+        }
+    };
 
     let name = &input.ident;
 
@@ -33,13 +48,13 @@ pub fn derive_packet(input: TokenStream) -> TokenStream {
 
     let decode_fields = field_names.iter().map(|field| {
         quote! {
-            #field: ::packet::PacketDecode::decode(reader)?,
+            #field: #packet_crate::PacketDecode::decode_packet(reader)?,
         }
     });
 
     let encode_fields = field_names.iter().map(|field| {
         quote! {
-            ::packet::PacketEncode::encode(
+            #packet_crate::PacketEncode::encode_packet(
                 &self.#field,
                 writer,
             )?;
@@ -47,9 +62,9 @@ pub fn derive_packet(input: TokenStream) -> TokenStream {
     });
 
     quote! {
-        impl ::packet::PacketDecode for #name {
-            fn decode(reader: &mut ::packet::PacketReader)
-                -> std::result::Result<Self, ::packet::DecodeError>
+        impl #packet_crate::PacketDecode for #name {
+            fn decode_packet(reader: &mut #packet_crate::PacketReader)
+                -> std::result::Result<Self, #packet_crate::DecodeError>
             {
                 Ok(Self {
                     #(#decode_fields)*
@@ -57,9 +72,9 @@ pub fn derive_packet(input: TokenStream) -> TokenStream {
             }
         }
 
-        impl ::packet::PacketEncode for #name {
-            fn encode(&self, writer: &mut ::packet::PacketWriter)
-                -> std::result::Result<(), ::packet::EncodeError>
+        impl #packet_crate::PacketEncode for #name {
+            fn encode_packet(&self, writer: &mut #packet_crate::PacketWriter)
+                -> std::result::Result<(), #packet_crate::EncodeError>
             {
                 #(#encode_fields)*
                 Ok(())

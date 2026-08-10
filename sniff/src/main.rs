@@ -8,10 +8,10 @@ use pnet_packet::{
     ip::IpNextHeaderProtocols,
     ipv4::Ipv4Packet,
     tcp::{TcpPacket, TcpFlags},
-    Packet,
+    Packet as _,
 };
 
-use packet::{PacketType, PacketReader, Hello, PacketDecode};
+use packet::{PacketType, PacketReader, Hello, Packet};
 use sniff::Rc4;
 
 // NOTE: This is just a quick setup for sniffing stuff. I will eventually clean
