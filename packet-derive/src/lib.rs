@@ -7,6 +7,8 @@ use syn::{parse_macro_input, Data, DeriveInput, Fields};
 pub fn derive_packet(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
 
+    // Resolve the runtime crate so the generated code works both internally and
+    // when the crate is used as a dependency under a renamed package.
     let packet_crate = match crate_name("packet") {
         Ok(FoundCrate::Itself) => quote!(crate),
         Ok(FoundCrate::Name(name)) => {
@@ -23,6 +25,7 @@ pub fn derive_packet(input: TokenStream) -> TokenStream {
 
     let name = &input.ident;
 
+    // Only struct with named fields can be derived on.
     let err = "Packet can only be derived for structs with named fields";
 
     let fields = match &input.data {
@@ -41,17 +44,20 @@ pub fn derive_packet(input: TokenStream) -> TokenStream {
         }
     };
 
+    // Collect field identifiers for use in the generated implementations.
     let field_names: Vec<_> = fields
         .iter()
         .map(|field| field.ident.as_ref().unwrap())
         .collect();
 
+    // Generate a decode operation for each field, in declaration order.
     let decode_fields = field_names.iter().map(|field| {
         quote! {
             #field: #packet_crate::PacketDecode::decode_packet(reader)?,
         }
     });
 
+    // Generate an encode operation for each field, in declaration order.
     let encode_fields = field_names.iter().map(|field| {
         quote! {
             #packet_crate::PacketEncode::encode_packet(
@@ -61,6 +67,7 @@ pub fn derive_packet(input: TokenStream) -> TokenStream {
         }
     });
 
+    // Implement packet serialization/deserialization for the struct!
     quote! {
         impl #packet_crate::PacketDecode for #name {
             fn decode_packet(reader: &mut #packet_crate::PacketReader)
