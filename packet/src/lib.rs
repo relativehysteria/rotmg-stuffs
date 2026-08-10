@@ -1,5 +1,6 @@
 //! Utilities for working with game packets.
 
+pub mod types;
 pub mod reader;
 pub mod writer;
 
@@ -45,22 +46,6 @@ pub trait Packet: PacketEncode + PacketDecode {
 
 // Auto impl for all types.
 impl<T: PacketEncode + PacketDecode> Packet for T {}
-
-/// NOTE: Put here for now; testing whether decryption works! I'll put it into a
-/// better place later.
-#[derive(Debug, Packet)]
-pub struct Hello {
-    pub game_id: i32,
-    pub build_version: String,
-    pub access_token: String,
-    pub key_time: u32,
-    pub key: Vec<u8>,
-    pub user_platform: String,
-    pub play_platform: String,
-    pub platform_token: String,
-    pub client_token: String,
-    pub user_token: String,
-}
 
 macro_rules! packet_types {
     (

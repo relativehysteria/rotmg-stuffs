@@ -11,7 +11,10 @@ use pnet_packet::{
     Packet as _,
 };
 
-use packet::{PacketType, PacketReader, Hello, Packet};
+use packet::{
+    PacketType, PacketReader, Packet,
+    types::Hello,
+};
 use sniff::Rc4;
 
 // NOTE: This is just a quick setup for sniffing stuff. I will eventually clean
