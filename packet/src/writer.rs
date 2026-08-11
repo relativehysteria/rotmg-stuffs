@@ -4,6 +4,7 @@
 //! integers into a byte slice.
 
 use std::fmt;
+use crate::Rc4;
 
 /// Encodes a value into the packet wire format.
 pub trait PacketEncode {
@@ -37,20 +38,21 @@ impl fmt::Display for EncodeError {
 impl std::error::Error for EncodeError {}
 
 /// Writes values sequentially into a byte vector.
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
-pub struct PacketWriter {
+pub struct PacketWriter<'rc4> {
     data: Vec<u8>,
+    rc4: &'rc4 mut Rc4,
 }
 
-impl PacketWriter {
+impl<'rc4> PacketWriter<'rc4> {
     /// Creates a writer for a packet payload.
-    pub const fn new() -> Self {
-        Self { data: Vec::new() }
+    pub const fn new(rc4: &'rc4 mut Rc4) -> Self {
+        Self { rc4, data: Vec::new() }
     }
 
     /// Creates a writer for a packet payload with pre-allocated `capacity`.
-    pub fn with_capacity(capacity: usize) -> Self {
+    pub fn with_capacity(capacity: usize, rc4: &'rc4 mut Rc4) -> Self {
         Self {
+            rc4,
             data: Vec::with_capacity(capacity),
         }
     }
@@ -70,6 +72,14 @@ impl PacketWriter {
         self.data
     }
 
+    /// Encrypts and appends bytes to the payload.
+    fn write_encrypted(&mut self, bytes: &[u8]) {
+        self.data.reserve(bytes.len());
+        for &byte in bytes {
+            self.data.push(self.rc4.process_byte(byte));
+        }
+    }
+
     /// Writes a byte array into the payload.
     pub fn write_byte_array(&mut self, bytes: &[u8]) -> Result<(), EncodeError>
     {
@@ -82,7 +92,7 @@ impl PacketWriter {
         })?;
 
         self.write_u16(len);
-        self.data.extend_from_slice(bytes);
+        self.write_encrypted(bytes);
 
         Ok(())
     }
@@ -127,13 +137,13 @@ impl PacketEncode for Vec<u8> {
 
 macro_rules! impl_write_int {
     ($($ty:ty => $name:ident),* $(,)?) => {
-        impl PacketWriter {
+        impl<'rc4> PacketWriter<'rc4> {
             $(
                 #[doc = concat!(
                     "Writes `", stringify!($ty), "` into the payload."
                 )]
                 pub fn $name(&mut self, value: $ty) {
-                    self.data.extend_from_slice(&value.to_be_bytes());
+                    self.write_encrypted(&value.to_be_bytes());
                 }
             )*
         }

@@ -11,6 +11,7 @@ pub const INCOMING_KEY: &str = "c91d9eec420160730d825604e0";
 ///
 /// The cipher maintains state between calls to [`Rc4::process`], so multiple
 /// calls continue consuming the same keystream.
+#[derive(Debug, Clone)]
 pub struct Rc4 {
     /// The RC4 permutation (S-box).
     s_box: [u8; 256],
@@ -74,18 +75,27 @@ impl Rc4 {
     /// performs the corresponding encryption/decryption operation.
     pub fn process(&mut self, data: &mut [u8]) {
         for byte in data {
-            self.i = self.i.wrapping_add(1);
-            self.j = self.j.wrapping_add(self.s_box[self.i as usize]);
-
-            self.s_box.swap(self.i as usize, self.j as usize);
-
-            let t = self.s_box[self.i as usize]
-                .wrapping_add(self.s_box[self.j as usize]);
-
-            let keystream_byte = self.s_box[t as usize];
-
-            *byte ^= keystream_byte;
+            *byte ^= self.next_byte();
         }
+    }
+
+    /// Calculates the next byte which should be used for encrypting (i.e.
+    /// xoring with) a byte.
+    fn next_byte(&mut self) -> u8 {
+        self.i = self.i.wrapping_add(1);
+        self.j = self.j.wrapping_add(self.s_box[self.i as usize]);
+
+        self.s_box.swap(self.i as usize, self.j as usize);
+
+        let t = self.s_box[self.i as usize]
+            .wrapping_add(self.s_box[self.j as usize]);
+
+        self.s_box[t as usize]
+    }
+
+    /// Encrypts or decrypts a `byte`.
+    pub fn process_byte(&mut self, byte: u8) -> u8 {
+        byte ^ self.next_byte()
     }
 }
 

@@ -4,10 +4,11 @@
 //! integers from a byte slice.
 
 use std::fmt;
+use crate::Rc4;
 
 /// Decodes a value from the packet wire format.
 ///
-/// Implementations consume bytes from the [`PacketReadaer`] and reconstruct
+/// Implementations consume bytes from the [`PacketReader`] and reconstruct
 /// a value from them.
 pub trait PacketDecode: Sized {
     fn decode_packet(reader: &mut PacketReader) -> Result<Self, DecodeError>;
@@ -50,18 +51,19 @@ impl fmt::Display for DecodeError {
 
 impl std::error::Error for DecodeError {}
 
-/// Reads values sequentially from a byte slice.
-pub struct PacketReader<'a> {
+/// Reads and decrypts values sequentially from a byte slice.
+pub struct PacketReader<'a, 'rc4> {
     data: &'a [u8],
     pos: usize,
+    rc4: &'rc4 mut Rc4,
 }
 
-impl<'a> PacketReader<'a> {
+impl<'a, 'rc4> PacketReader<'a, 'rc4> {
     /// Creates a reader positioned at the start of the packet payload.
     ///
-    /// `data` must be the raw decrypted payload.
-    pub fn new(data: &'a [u8]) -> Self {
-        Self { data, pos: 0 }
+    /// `data` must be the raw encrypted packet payload.
+    pub fn new(data: &'a [u8], rc4: &'rc4 mut Rc4) -> Self {
+        Self { data, rc4, pos: 0 }
     }
 
     /// Returns the current byte position.
@@ -79,8 +81,8 @@ impl<'a> PacketReader<'a> {
         self.data.len() == self.pos
     }
 
-    /// Consumes and returns the next `n` bytes.
-    pub fn take(&mut self, n: usize) -> Result<&'a [u8], DecodeError> {
+    /// Consumes and returns the next raw `n` bytes.
+    pub fn take_raw(&mut self, n: usize) -> Result<&'a [u8], DecodeError> {
         let end = self.pos.checked_add(n).ok_or(
             DecodeError::UnexpectedEof {
                 pos: self.pos,
@@ -102,10 +104,27 @@ impl<'a> PacketReader<'a> {
         Ok(result)
     }
 
+    /// Consumes, decrypts and returns the next `N` bytes.
+    fn take_decrypted<const N: usize>(
+        &mut self,
+    ) -> Result<[u8; N], DecodeError> {
+        let encrypted = self.take_raw(N)?;
+
+        let mut decrypted = [0u8; N];
+
+        for (dst, &src) in decrypted.iter_mut().zip(encrypted) {
+            *dst = self.rc4.process_byte(src);
+        }
+
+        Ok(decrypted)
+    }
+
     /// Reads a length-prefixed byte arra.
-    pub fn read_byte_array(&mut self) -> Result<&'a [u8], DecodeError> {
+    pub fn read_byte_array(&mut self) -> Result<Vec<u8>, DecodeError> {
         let len = self.read_u16()? as usize;
-        self.take(len)
+        let mut data = self.take_raw(len)?.to_vec();
+        self.rc4.process(&mut data);
+        Ok(data)
     }
 
     /// Reads a length-prefixed UTF-8 string.
@@ -113,7 +132,7 @@ impl<'a> PacketReader<'a> {
         let pos = self.pos;
         let bytes = self.read_byte_array()?;
 
-        String::from_utf8(bytes.to_vec())
+        String::from_utf8(bytes)
             .map_err(|_| DecodeError::InvalidUtf8 { pos })
     }
 }
@@ -126,23 +145,19 @@ impl PacketDecode for String {
 
 impl PacketDecode for Vec<u8> {
     fn decode_packet(reader: &mut PacketReader) -> Result<Self, DecodeError> {
-        reader.read_byte_array().map(|arr| arr.to_vec())
+        reader.read_byte_array()
     }
 }
 
 macro_rules! impl_read_int {
     ($($ty:ty => $name:ident),* $(,)?) => {
-        impl<'a> PacketReader<'a> {
+        impl<'a, 'rc4> PacketReader<'a, 'rc4> {
             $(
                 #[doc = concat!(
                     "Reads and returns `", stringify!($ty), "` from the packet."
                 )]
                 pub fn $name(&mut self) -> Result<$ty, DecodeError> {
-                    let bytes = self.take(std::mem::size_of::<$ty>())?;
-
-                    Ok(<$ty>::from_be_bytes(
-                        bytes.try_into().unwrap()
-                    ))
+                    Ok(<$ty>::from_be_bytes(self.take_decrypted()?))
                 }
             )*
         }

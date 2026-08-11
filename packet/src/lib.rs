@@ -1,11 +1,13 @@
 //! Utilities for working with game packets.
 
+pub mod rc4;
 pub mod types;
 pub mod reader;
 pub mod writer;
 
 pub use writer::{PacketWriter, PacketEncode, EncodeError};
 pub use reader::{PacketReader, PacketDecode, DecodeError};
+pub use rc4::Rc4;
 
 // Export the Packet derive macro here. These are allowed to have the same name
 // because they're different namespaces; the `Packet` trait (implemented below)
@@ -46,6 +48,61 @@ pub trait Packet: PacketEncode + PacketDecode {
 
 // Auto impl for all types.
 impl<T: PacketEncode + PacketDecode> Packet for T {}
+
+/// The direction a packet is going.
+pub enum Direction {
+    Incoming,
+    Outgoing,
+}
+
+/// Machinery for encoding/decoding encrypted game packets.
+#[derive(Clone, Debug)]
+pub struct PacketIo {
+    outgoing: Rc4,
+    incoming: Rc4,
+}
+
+impl PacketIo {
+    /// Creates new machinery for encoding and decoding packets, starting the
+    /// RC4 states for encrypting/decrypting at their initial positions.
+    pub fn new() -> Self {
+        Self {
+            incoming: Rc4::new_incoming(),
+            outgoing: Rc4::new_outgoing(),
+        }
+    }
+
+    /// Resets the RC4 states to their initial.
+    pub fn reset_rc4(&mut self) {
+        self.outgoing = Rc4::new_outgoing();
+        self.incoming = Rc4::new_incoming();
+    }
+
+    /// Returns the RC4 state for `direction`.
+    fn for_direction(&mut self, direction: Direction) -> &mut Rc4 {
+        match direction {
+            Direction::Incoming => &mut self.incoming,
+            Direction::Outgoing => &mut self.outgoing,
+        }
+    }
+
+    /// Encodes a packet into an encrypted byte vector.
+    pub fn encode<T: PacketEncode>(&mut self, direction: Direction, value: T)
+        -> Result<Vec<u8>, EncodeError>
+    {
+        let mut writer = PacketWriter::new(self.for_direction(direction));
+        value.encode_packet(&mut writer)?;
+        Ok(writer.into_bytes())
+    }
+
+    /// Decodes an encrypted packet as `T`.
+    pub fn decode<T: PacketDecode>(&mut self, direction: Direction, data: &[u8])
+        -> Result<T, DecodeError>
+    {
+        let mut reader = PacketReader::new(data, self.for_direction(direction));
+        T::decode_packet(&mut reader)
+    }
+}
 
 macro_rules! packet_types {
     (

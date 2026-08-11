@@ -6,16 +6,15 @@ use pcap::{Device, Capture};
 use pnet_packet::{
     ethernet::{EtherTypes, EthernetPacket},
     ip::IpNextHeaderProtocols,
-    ipv4::Ipv4Packet,
+    ipv4::{Ipv4Packet},
     tcp::{TcpPacket, TcpFlags},
     Packet as _,
 };
 
 use packet::{
-    PacketType, PacketReader, Packet,
+    PacketIo, PacketType, Direction,
     types::Hello,
 };
-use sniff::Rc4;
 
 // NOTE: This is just a quick setup for sniffing stuff. I will eventually clean
 // this up! <3
@@ -94,6 +93,8 @@ fn main() {
 
     let mut waiting_for_hello = true;
 
+    let mut packet_io = PacketIo::new();
+
     println!("Waiting for initial Hello packet to start decrypting...");
 
     // Start capturing!
@@ -149,6 +150,7 @@ fn main() {
             connections.insert(flow, Connection {});
         }
 
+        let port = tcp.get_source();
         let payload = tcp.payload();
 
         if payload.len() < 5 { continue; }
@@ -157,20 +159,20 @@ fn main() {
             continue;
         };
 
+        // When we start sniffing, we have to wait for a Hello packet to start
+        // decrypting...
         if waiting_for_hello {
             if packet_type != PacketType::Hello { continue; }
-
             waiting_for_hello = false;
-
-            println!("Got initial hello!");
         }
 
         if packet_type == PacketType::Hello {
-            let mut data = payload[5..].iter().cloned().collect::<Vec<u8>>();
-            let mut decryptor = Rc4::new_outgoing();
-            decryptor.process(&mut data);
-            let mut reader = PacketReader::new(&data);
-            let hello = Hello::decode(&mut reader);
+            // Reset the RC4 state.
+            packet_io.reset_rc4();
+
+            // Decode the packet!
+            let hello = packet_io.decode::<Hello>(
+                Direction::Outgoing, &payload[5..]);
             println!("{hello:#?}");
         }
 
@@ -187,7 +189,7 @@ fn main() {
             size,
             payload.len(),
             &payload[..5],
-            if tcp.get_source() == 2050 { "I".red() } else { "O".green() },
+            if port == 2050 { "I".red() } else { "O".green() },
             packet_type,
         );
     }
