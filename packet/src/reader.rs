@@ -123,7 +123,7 @@ impl<'a, 'rc4> PacketReader<'a, 'rc4> {
     pub fn read_byte_array(&mut self) -> Result<Vec<u8>, DecodeError> {
         let len = self.read_u16()? as usize;
         let mut data = self.take_raw(len)?.to_vec();
-        self.rc4.process(&mut data);
+        self.rc4.process_mut(&mut data);
         Ok(data)
     }
 

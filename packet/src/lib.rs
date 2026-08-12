@@ -50,6 +50,7 @@ pub trait Packet: PacketEncode + PacketDecode {
 impl<T: PacketEncode + PacketDecode> Packet for T {}
 
 /// The direction a packet is going.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Direction {
     Incoming,
     Outgoing,
@@ -79,7 +80,7 @@ impl PacketIo {
     }
 
     /// Returns the RC4 state for `direction`.
-    fn for_direction(&mut self, direction: Direction) -> &mut Rc4 {
+    pub fn rc4_for_direction(&mut self, direction: Direction) -> &mut Rc4 {
         match direction {
             Direction::Incoming => &mut self.incoming,
             Direction::Outgoing => &mut self.outgoing,
@@ -90,7 +91,7 @@ impl PacketIo {
     pub fn encode<T: PacketEncode>(&mut self, direction: Direction, value: T)
         -> Result<Vec<u8>, EncodeError>
     {
-        let mut writer = PacketWriter::new(self.for_direction(direction));
+        let mut writer = PacketWriter::new(self.rc4_for_direction(direction));
         value.encode_packet(&mut writer)?;
         Ok(writer.into_bytes())
     }
@@ -99,7 +100,8 @@ impl PacketIo {
     pub fn decode<T: PacketDecode>(&mut self, direction: Direction, data: &[u8])
         -> Result<T, DecodeError>
     {
-        let mut reader = PacketReader::new(data, self.for_direction(direction));
+        let mut reader =
+            PacketReader::new(data, self.rc4_for_direction(direction));
         T::decode_packet(&mut reader)
     }
 }

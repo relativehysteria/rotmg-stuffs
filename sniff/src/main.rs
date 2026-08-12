@@ -13,7 +13,7 @@ use pnet_packet::{
 
 use packet::{
     PacketIo, PacketType, Direction,
-    types::Hello,
+    types,
 };
 
 // NOTE: This is just a quick setup for sniffing stuff. I will eventually clean
@@ -46,7 +46,8 @@ impl ParsedTcpFlags {
 }
 
 impl Flow {
-    fn from_packet(ip: &Ipv4Packet, tcp: &TcpPacket) -> Self {
+    fn from_packet(ip: &Ipv4Packet, tcp: &TcpPacket) -> (Self, Direction) {
+        // Create the source and destination addresses.
         let src = SocketAddr::new(
             ip.get_source().into(),
             tcp.get_source(),
@@ -56,13 +57,17 @@ impl Flow {
             tcp.get_destination(),
         );
 
-        let (client, server) = if tcp.get_source() == 2050 {
-            (dest, src)
-        } else {
-            (src, dest)
-        };
+        // Get the direction of the packet.
+        let direction = (tcp.get_source() == 2050)
+            .then_some(Direction::Incoming)
+            .unwrap_or(Direction::Outgoing);
 
-        Self { client, server, }
+        // Determine who's the client and who's the server.
+        let (client, server) = matches!(direction, Direction::Incoming)
+            .then_some((dest, src))
+            .unwrap_or((src, dest));
+
+        (Self { client, server, }, direction)
     }
 }
 
@@ -70,9 +75,22 @@ impl Flow {
 struct Connection {}
 
 fn main() {
-    // Get the default device.
-    let dev = Device::lookup().unwrap().unwrap();
-    println!("Will use device \"{}\"", dev.name);
+    // Attempt to parse the device to use from environment, otherwise select the
+    // one pcap chooses.
+    let default_dev = Device::lookup().unwrap().unwrap();
+
+    let dev_name = std::env::var("ROTMG_DEV").unwrap_or(default_dev.name);
+
+    let devices = Device::list().unwrap();
+    let dev_name = devices.iter()
+        .find(|d| d.name == dev_name)
+        .map(|d| d.name.clone())
+        .expect("Device specified by ROTMG_DEV not found");
+
+    println!("Devices on the system ({} will be selected):", dev_name.green());
+    devices.iter().for_each(|d| println!(" * {}", d.name));
+
+    let dev = devices.into_iter().find(|d| d.name == dev_name).unwrap();
 
     // Activate a capture for the device.
     let mut cap = Capture::from_device(dev)
@@ -95,9 +113,9 @@ fn main() {
 
     let mut packet_io = PacketIo::new();
 
-    println!("Waiting for initial Hello packet to start decrypting...");
-
     // Start capturing!
+    println!("\nWaiting for initial Hello packet to start decrypting...");
+
     while let Ok(packet) = cap.next_packet() {
         // We only care about TCP IPv4 packets.
 
@@ -121,7 +139,7 @@ fn main() {
             continue;
         };
 
-        let flow = Flow::from_packet(&ip, &tcp);
+        let (flow, direction) = Flow::from_packet(&ip, &tcp);
         let flags = ParsedTcpFlags::from_packet(&tcp);
 
         if flags.fin {
@@ -150,7 +168,6 @@ fn main() {
             connections.insert(flow, Connection {});
         }
 
-        let port = tcp.get_source();
         let payload = tcp.payload();
 
         if payload.len() < 5 { continue; }
@@ -166,30 +183,45 @@ fn main() {
             waiting_for_hello = false;
         }
 
-        if packet_type == PacketType::Hello {
-            // Reset the RC4 state.
-            packet_io.reset_rc4();
+        let packet_len = payload.len();
+        let (header, payload) = payload.split_at(5);
+        match packet_type {
+            PacketType::Hello => {
+                // Hello packets mean the connection and its RC4 state is reset.
+                packet_io.reset_rc4();
 
-            // Decode the packet!
-            let hello = packet_io.decode::<Hello>(
-                Direction::Outgoing, &payload[5..]);
-            println!("{hello:#?}");
+                let hello = packet_io.decode::<types::Hello>(
+                    direction, payload);
+                println!("{hello:#?}");
+            },
+            _ => {
+                // Even if we don't recognize this packet, we have to process it
+                // to keep the RC4 state in sync.
+                packet_io
+                    .rc4_for_direction(direction)
+                    .discard(payload.len());
+            },
         }
+
 
         let packet_type = Some(packet_type)
             .map(|p| format!("{:?}", p).into())
             .unwrap_or("Unknown".red());
 
-        let below = "below".green();
-        let above = "above".red();
-        let size = if payload.len() < 1000 { below } else { above };
+        let size_text = (packet_len < 1000)
+            .then_some("below".green())
+            .unwrap_or("above".red());
+
+        let dir_text = matches!(direction, Direction::Incoming)
+            .then_some("I".red())
+            .unwrap_or("O".green());
 
         println!(
-            "Payload {} 1000 {:>4}: {:>2X?}: {} {}",
-            size,
-            payload.len(),
-            &payload[..5],
-            if port == 2050 { "I".red() } else { "O".green() },
+            "Packet {} 1000 {:>4}: {:>2X?}: {} {}",
+            size_text,
+            packet_len,
+            header,
+            dir_text,
             packet_type,
         );
     }

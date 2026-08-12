@@ -71,12 +71,26 @@ impl Rc4 {
 
     /// Encrypts or decrypts `data` in place.
     ///
-    /// RC4 is symmetric, so applying `process` with the same cipher state
+    /// RC4 is symmetric, so applying `process_mut()` with the same cipher state
     /// performs the corresponding encryption/decryption operation.
-    pub fn process(&mut self, data: &mut [u8]) {
-        for byte in data {
-            *byte ^= self.next_byte();
-        }
+    pub fn process_mut(&mut self, data: &mut [u8]) {
+        data.iter_mut().for_each(|b| { *b ^= self.next_byte(); });
+    }
+
+    /// Encrypts or decrypts `data` into a new buffer.
+    ///
+    /// RC4 is symmetric, so applying `process()` with the same cipher state
+    /// performs the corresponding encryption/decryption operation.
+    #[must_use]
+    pub fn process(&mut self, data: &[u8]) -> Vec<u8> {
+        let mut data = data.to_vec();
+        self.process_mut(&mut data);
+        data
+    }
+
+    /// Advances the cipher state by `n` bytes without producint output.
+    pub fn discard(&mut self, n: usize) {
+        (0..n).for_each(|_| { self.next_byte(); });
     }
 
     /// Calculates the next byte which should be used for encrypting (i.e.
